@@ -1,0 +1,7 @@
+*.d
+*.o
+*swp
+out*
+*.cc
+lexer
+grading
