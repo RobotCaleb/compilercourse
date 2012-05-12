@@ -42,71 +42,90 @@ extern YYSTYPE cool_yylval;
 /*
  *  Add Your own definitions here
  */
+int commentDepth = 0;
+
+void SetCommentError(char *error);
+void SetStringError(char *error);
+bool StringTooLong(int length);
+int AddToString(char* add);
 
 %}
+
+/* States */
+%x COMMENT_SHORT
+%x COMMENT_LONG
+
+%x STRING
+%x STR_ERROR
 
 /*
  * Define names for regular expressions here.
  */
 
-DARROW          =>
-CLASS           (?i:class)
-ELSE            (?i:else)
-FI              (?i:fi)
-IF              (?i:if)
-IN              (?i:in)
-INHERITS        (?i:inherits)
-ISVOID          (?i:isvoid)
-LET             (?i:let)
-LOOP            (?i:loop)
-POOL            (?i:pool)
-THEN            (?i:then)
-WHILE           (?i:while)
-CASE            (?i:case)
-ESAC            (?i:esac)
-NEW             (?i:new)
-OF              (?i:of)
-NOT             (?i:not)
+COMMENT_START                       "--"
+COMMENT_LONG_START                  "(*"
+COMMENT_LONG_END                    "*)"
 
-/* boolean */
-TRUE            t(?i:rue)
-FALSE           f(?i:alse)
+DARROW                              "=>"
+ASSIGN                              "<-"
+LE                                  "<="
+
+CLASS                               ?i:class
+ELSE                                ?i:else
+FI                                  ?i:fi
+IF                                  ?i:if
+IN                                  ?i:in
+INHERITS                            ?i:inherits
+ISVOID                              ?i:isvoid
+LET                                 ?i:let
+LOOP                                ?i:loop
+POOL                                ?i:pool
+THEN                                ?i:then
+WHILE                               ?i:while
+CASE                                ?i:case
+ESAC                                ?i:esac
+NEW                                 ?i:new
+OF                                  ?i:of
+NOT                                 ?i:not
+
+ /* boolean */
+TRUE                                t(?i:rue)
+FALSE                               f(?i:alse)
+
+ /* Numbers */
+INTEGER         [0-9]+
+
+ /* Identifiers */
+TYPE                                [A-Z][a-zA-Z0-9]*
+OBJECT                              [a-z][a-zA-Z0-9_]*
 
 %%
 
  /*
-  *  Nested comments
-  */
-
-
- /*
   *  The multiple-character operators.
   */
-{DARROW}                { return (DARROW); }
+{DARROW}                            { return (DARROW); }
+{ASSIGN}                            { return ASSIGN; }
+{LE}                                { return LE; }
 
- /*
-  * Keywords are case-insensitive except for the values true and false,
-  * which must begin with a lower-case letter.
-  */
-{CLASS}           { return (CLASS); }
-{ELSE}            { return (ELSE); }
-{FALSE}           { cool_yylval.boolean = 0; return (BOOL_CONST); }
-{FI}              { return (FI); }
-{IF}              { return (IF); }
-{IN}              { return (IN); }
-{INHERITS}        { return (INHERITS); }
-{ISVOID}          { return (ISVOID); }
-{LET}             { return (LET); }
-{LOOP}            { return (LOOP); }
-{POOL}            { return (POOL); }
-{THEN}            { return (THEN); }
-{WHILE}           { return (WHILE); }
-{CASE}            { return (CASE); }
-{ESAC}            { return (ESAC); }
-{NEW}             { return (NEW); }
-{OF}              { return (OF); }
-{NOT}             { return (NOT); }
-{TRUE}            { cool_yylval.boolean = 1; return (BOOL_CONST); }
+ /* comments */
+{COMMENT_START}                     { BEGIN(COMMENT_SHORT); }
+<COMMENT_SHORT>\n                   { BEGIN(INITIAL); }
+<COMMENT_SHORT>.*                   /* NOTHING */
+
+{COMMENT_LONG_END}                  { SetCommentError("Comment end without matching start"); return ERROR; }
+
+{COMMENT_LONG_START}                { BEGIN(COMMENT_LONG); commentDepth++; }
+<COMMENT_LONG>{COMMENT_LONG_START}  { commentDepth++; }
+<COMMENT_LONG>{COMMENT_LONG_END}    {
+
+                                       commentDepth--;
+                                       if (commentDepth <= 0) BEGIN(INITIAL);
+                                    }
+<COMMENT_LONG><<EOF>>               { SetCommentError("EOF in comment"); return ERROR; }
+<COMMENT_LONG><<EOF>>               { SetCommentError("EOF in comment"); return ERROR; }
+<COMMENT_LONG>[^(\n\*]*             /* NOTHING */
+<COMMENT_LONG>[(\*]                 /* NOTHING */
 
  /*
   *  String constants (C syntax)
@@ -115,5 +134,151 @@ FALSE           f(?i:alse)
   *
   */
 
+\"\"                    { cool_yylval.symbol = inttable.add_string(""); return STR_CONST; }
+\"                      { BEGIN(STRING); }
+<STRING>"\""            {
+                            BEGIN(INITIAL);
+                            cool_yylval.symbol = inttable.add_string(string_buf);
+                            string_buf[0] = '\0';
+                            return STR_CONST;
+                        }
+<STRING>[^\\\"\n\0]*      {
+                            if (AddToString(yytext) == ERROR) return ERROR;
+                        }
+<STRING>\\r             {
+                            if (AddToString("\r") == ERROR) return ERROR;
+                        }
+<STRING>\\b             {
+                            if (AddToString("\b") == ERROR) return ERROR;
+                        }
+<STRING>\\t             {
+                            if (AddToString("\t") == ERROR) return ERROR;
+                        }
+<STRING>\\n             {
+                            if (AddToString("\n") == ERROR) return ERROR;
+                        }
+<STRING>\\f             {
+                            if (AddToString("\f") == ERROR) return ERROR;
+                        }
+<STRING>\n              {
+                            SetStringError("Unterminated string");
+                            string_buf[0] = '\0';
+                            return ERROR;
+                        }
+<STRING>\\0             {
+                            SetStringError("Escaped NULL in string");
+                            string_buf[0] = '\0';
+                            return ERROR;
+                        }
+<STRING>\0              {
+                            SetStringError("NULL in string");
+                            string_buf[0] = '\0';
+                            return ERROR;
+                        }
+<STRING>\\              /* ignore */
+<STRING><<EOF>>         {
+                            SetStringError("EOF in string");
+                            string_buf[0] = '\0';
+                            return ERROR;
+                        }
+
+
+<STR_ERROR>[^\\\"\n\0]* /* nothing */
+<STR_ERROR>\n           { curr_lineno++; BEGIN(INITIAL); }
+<STR_ERROR>\"           { curr_lineno++; BEGIN(INITIAL); }
+<STR_ERROR>\\.          /* nothing */
+
+ /*
+  * Keywords are case-insensitive except for the values true and false,
+  * which must begin with a lower-case letter.
+  */
+"="                     { return (int)'='; }
+"+"                     { return (int)'+'; }
+"-"                     { return (int)'-'; }
+"*"                     { return (int)'*'; }
+"/"                     { return (int)'/'; }
+"("                     { return (int)'('; }
+")"                     { return (int)')'; }
+"{"                     { return (int)'{'; }
+"}"                     { return (int)'}'; }
+";"                     { return (int)';'; }
+":"                     { return (int)':'; }
+"."                     { return (int)'.'; }
+","                     { return (int)','; }
+"<"                     { return (int)'<'; }
+"~"                     { return (int)'~'; }
+"@"                     { return (int)'@'; }
+
+{CLASS}                 { return (CLASS); }
+{ELSE}                  { return (ELSE); }
+{FI}                    { return (FI); }
+{IF}                    { return (IF); }
+{IN}                    { return (IN); }
+{INHERITS}              { return (INHERITS); }
+{ISVOID}                { return (ISVOID); }
+{LET}                   { return (LET); }
+{LOOP}                  { return (LOOP); }
+{POOL}                  { return (POOL); }
+{THEN}                  { return (THEN); }
+{WHILE}                 { return (WHILE); }
+{CASE}                  { return (CASE); }
+{ESAC}                  { return (ESAC); }
+{NEW}                   { return (NEW); }
+{OF}                    { return (OF); }
+{NOT}                   { return (NOT); }
+
+{TRUE}                  { cool_yylval.boolean = 1; return (BOOL_CONST); }
+{FALSE}                 { cool_yylval.boolean = 0; return (BOOL_CONST); }
+        
+{INTEGER}               { cool_yylval.symbol = inttable.add_string(yytext); return INT_CONST; }
+        
+{TYPE}                  { cool_yylval.symbol = inttable.add_string(yytext); return TYPEID; }
+{OBJECT}                { cool_yylval.symbol = inttable.add_string(yytext); return OBJECTID; }
+    
+    
+\n                      { curr_lineno++; }
+[ \r\t\v\f]             /* nothing */
+
+.                       { cool_yylval.error_msg = strdup(yytext); return ERROR; }
 
 %%
+
+int AddToString(char* add)
+{
+    if (StringTooLong(strlen(add)))
+    {
+        return ERROR;
+    }
+    else
+    {
+        strcat(string_buf, add);
+        return STR_CONST;
+    }
+}
+
+bool StringTooLong(int length)
+{
+    int len = length + strlen(string_buf);
+    if (len >= MAX_STR_CONST)
+    {
+        string_buf[0] = '\0';
+        SetStringError("String too long");
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+void SetCommentError(char *error)
+{
+    BEGIN(INITIAL);
+    cool_yylval.error_msg = error;
+}
+
+void SetStringError(char *error)
+{
+    BEGIN(STR_ERROR);
+    cool_yylval.error_msg = error;
+}
