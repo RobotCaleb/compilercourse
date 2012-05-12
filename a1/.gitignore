@@ -6,3 +6,4 @@ out*
 lexer
 grading
 *.pl
+sample.txt
