@@ -145,9 +145,6 @@ OBJECT                              [a-z][a-zA-Z0-9_]*
 <STRING>[^\\\"\n\0]*                {
                                         if (AddToString(yytext) == ERROR) return ERROR;
                                     }
-<STRING>\\\"                        {
-                                        if (AddToString(yytext) == ERROR) return ERROR;
-                                    }
 <STRING>\\b                         {
                                         if (AddToString("\b") == ERROR) return ERROR;
                                     }
@@ -171,17 +168,19 @@ OBJECT                              [a-z][a-zA-Z0-9_]*
                                         BEGIN(INITIAL);
                                         return ERROR;
                                     }
-<STRING>\\0                         {
+<STRING>\\\0                        {
                                         SetStringError("Escaped NULL in string");
                                         string_buf[0] = '\0';
                                         return ERROR;
+                                    }
+<STRING>\\.                         {
+                                        if (AddToString(yytext + 1) == ERROR) return ERROR;
                                     }
 <STRING>\0                          {
                                         SetStringError("NULL in string");
                                         string_buf[0] = '\0';
                                         return ERROR;
                                     }
-<STRING>\\                          /* ignore */
 <STRING><<EOF>>                     {
                                         SetStringError("EOF in string");
                                         string_buf[0] = '\0';
