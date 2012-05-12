@@ -5,3 +5,4 @@ out*
 *.cc
 lexer
 grading
+*.pl

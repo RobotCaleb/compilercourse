@@ -96,7 +96,7 @@ FALSE                               f(?i:alse)
 INTEGER         [0-9]+
 
  /* Identifiers */
-TYPE                                [A-Z][a-zA-Z0-9]*
+TYPE                                [A-Z][a-zA-Z0-9_]*
 OBJECT                              [a-z][a-zA-Z0-9_]*
 
 %%
@@ -122,10 +122,9 @@ OBJECT                              [a-z][a-zA-Z0-9_]*
                                        commentDepth--;
                                        if (commentDepth <= 0) BEGIN(INITIAL);
                                     }
-<COMMENT_LONG><<EOF>>               { SetCommentError("EOF in comment"); return ERROR; }
-<COMMENT_LONG><<EOF>>               { SetCommentError("EOF in comment"); return ERROR; }
 <COMMENT_LONG>[^(\n\*]*             /* NOTHING */
 <COMMENT_LONG>[(\*]                 /* NOTHING */
+<COMMENT_LONG><<EOF>>               { SetCommentError("EOF in comment"); return ERROR; }
 
  /*
   *  String constants (C syntax)
@@ -134,112 +133,119 @@ OBJECT                              [a-z][a-zA-Z0-9_]*
   *
   */
 
-\"\"                    { cool_yylval.symbol = inttable.add_string(""); return STR_CONST; }
-\"                      { BEGIN(STRING); }
-<STRING>"\""            {
-                            BEGIN(INITIAL);
-                            cool_yylval.symbol = inttable.add_string(string_buf);
-                            string_buf[0] = '\0';
-                            return STR_CONST;
-                        }
-<STRING>[^\\\"\n\0]*      {
-                            if (AddToString(yytext) == ERROR) return ERROR;
-                        }
-<STRING>\\r             {
-                            if (AddToString("\r") == ERROR) return ERROR;
-                        }
-<STRING>\\b             {
-                            if (AddToString("\b") == ERROR) return ERROR;
-                        }
-<STRING>\\t             {
-                            if (AddToString("\t") == ERROR) return ERROR;
-                        }
-<STRING>\\n             {
-                            if (AddToString("\n") == ERROR) return ERROR;
-                        }
-<STRING>\\f             {
-                            if (AddToString("\f") == ERROR) return ERROR;
-                        }
-<STRING>\n              {
-                            SetStringError("Unterminated string");
-                            string_buf[0] = '\0';
-                            return ERROR;
-                        }
-<STRING>\\0             {
-                            SetStringError("Escaped NULL in string");
-                            string_buf[0] = '\0';
-                            return ERROR;
-                        }
-<STRING>\0              {
-                            SetStringError("NULL in string");
-                            string_buf[0] = '\0';
-                            return ERROR;
-                        }
-<STRING>\\              /* ignore */
-<STRING><<EOF>>         {
-                            SetStringError("EOF in string");
-                            string_buf[0] = '\0';
-                            return ERROR;
-                        }
+\"\"                                { cool_yylval.symbol = inttable.add_string(""); return STR_CONST; }
+\"                                  { BEGIN(STRING); }
+<STRING>\"                          {
+                                        BEGIN(INITIAL);
+                                        cool_yylval.symbol = inttable.add_string(string_buf);
+                                        string_buf[0] = '\0';
+                                        return STR_CONST;
+                                    }
+<STRING>[^\\\"\n\0]*                {
+                                        if (AddToString(yytext) == ERROR) return ERROR;
+                                    }
+<STRING>\\\"                        {
+                                        if (AddToString(yytext) == ERROR) return ERROR;
+                                    }
+<STRING>\\b                         {
+                                        if (AddToString("\b") == ERROR) return ERROR;
+                                    }
+<STRING>\\t                         {
+                                        if (AddToString("\t") == ERROR) return ERROR;
+                                    }
+<STRING>\\n                         {
+                                        if (AddToString("\n") == ERROR) return ERROR;
+                                    }
+<STRING>\\\n                        {
+                                        if (AddToString("\n") == ERROR) return ERROR;
+                                        curr_lineno++;
+                                    }
+<STRING>\\f                         {
+                                        if (AddToString("\f") == ERROR) return ERROR;
+                                    }
+<STRING>\n                          {
+                                        SetStringError("Unterminated string");
+                                        string_buf[0] = '\0';
+                                        curr_lineno++;
+                                        BEGIN(INITIAL);
+                                        return ERROR;
+                                    }
+<STRING>\\0                         {
+                                        SetStringError("Escaped NULL in string");
+                                        string_buf[0] = '\0';
+                                        return ERROR;
+                                    }
+<STRING>\0                          {
+                                        SetStringError("NULL in string");
+                                        string_buf[0] = '\0';
+                                        return ERROR;
+                                    }
+<STRING>\\                          /* ignore */
+<STRING><<EOF>>                     {
+                                        SetStringError("EOF in string");
+                                        string_buf[0] = '\0';
+                                        return ERROR;
+                                    }
 
 
-<STR_ERROR>[^\\\"\n\0]* /* nothing */
-<STR_ERROR>\n           { curr_lineno++; BEGIN(INITIAL); }
-<STR_ERROR>\"           { curr_lineno++; BEGIN(INITIAL); }
-<STR_ERROR>\\.          /* nothing */
+<STR_ERROR>[^\\\"\n]*             /* nothing */
+<STR_ERROR>\n                       { BEGIN(INITIAL); curr_lineno++; }
+<STR_ERROR>\"                       { BEGIN(INITIAL); }
+<STR_ERROR>\\.                      /* nothing */
+<STR_ERROR>\\\n                     { curr_lineno++; }
 
  /*
   * Keywords are case-insensitive except for the values true and false,
   * which must begin with a lower-case letter.
   */
-"="                     { return (int)'='; }
-"+"                     { return (int)'+'; }
-"-"                     { return (int)'-'; }
-"*"                     { return (int)'*'; }
-"/"                     { return (int)'/'; }
-"("                     { return (int)'('; }
-")"                     { return (int)')'; }
-"{"                     { return (int)'{'; }
-"}"                     { return (int)'}'; }
-";"                     { return (int)';'; }
-":"                     { return (int)':'; }
-"."                     { return (int)'.'; }
-","                     { return (int)','; }
-"<"                     { return (int)'<'; }
-"~"                     { return (int)'~'; }
-"@"                     { return (int)'@'; }
-
-{CLASS}                 { return (CLASS); }
-{ELSE}                  { return (ELSE); }
-{FI}                    { return (FI); }
-{IF}                    { return (IF); }
-{IN}                    { return (IN); }
-{INHERITS}              { return (INHERITS); }
-{ISVOID}                { return (ISVOID); }
-{LET}                   { return (LET); }
-{LOOP}                  { return (LOOP); }
-{POOL}                  { return (POOL); }
-{THEN}                  { return (THEN); }
-{WHILE}                 { return (WHILE); }
-{CASE}                  { return (CASE); }
-{ESAC}                  { return (ESAC); }
-{NEW}                   { return (NEW); }
-{OF}                    { return (OF); }
-{NOT}                   { return (NOT); }
-
-{TRUE}                  { cool_yylval.boolean = 1; return (BOOL_CONST); }
-{FALSE}                 { cool_yylval.boolean = 0; return (BOOL_CONST); }
-        
-{INTEGER}               { cool_yylval.symbol = inttable.add_string(yytext); return INT_CONST; }
-        
-{TYPE}                  { cool_yylval.symbol = inttable.add_string(yytext); return TYPEID; }
-{OBJECT}                { cool_yylval.symbol = inttable.add_string(yytext); return OBJECTID; }
-    
-    
-\n                      { curr_lineno++; }
-[ \r\t\v\f]             /* nothing */
-
-.                       { cool_yylval.error_msg = strdup(yytext); return ERROR; }
+"="                                 { return (int)'='; }
+"+"                                 { return (int)'+'; }
+"-"                                 { return (int)'-'; }
+"*"                                 { return (int)'*'; }
+"/"                                 { return (int)'/'; }
+"("                                 { return (int)'('; }
+")"                                 { return (int)')'; }
+"{"                                 { return (int)'{'; }
+"}"                                 { return (int)'}'; }
+";"                                 { return (int)';'; }
+":"                                 { return (int)':'; }
+"."                                 { return (int)'.'; }
+","                                 { return (int)','; }
+"<"                                 { return (int)'<'; }
+"~"                                 { return (int)'~'; }
+"@"                                 { return (int)'@'; }
+            
+{CLASS}                             { return (CLASS); }
+{ELSE}                              { return (ELSE); }
+{FI}                                { return (FI); }
+{IF}                                { return (IF); }
+{IN}                                { return (IN); }
+{INHERITS}                          { return (INHERITS); }
+{ISVOID}                            { return (ISVOID); }
+{LET}                               { return (LET); }
+{LOOP}                              { return (LOOP); }
+{POOL}                              { return (POOL); }
+{THEN}                              { return (THEN); }
+{WHILE}                             { return (WHILE); }
+{CASE}                              { return (CASE); }
+{ESAC}                              { return (ESAC); }
+{NEW}                               { return (NEW); }
+{OF}                                { return (OF); }
+{NOT}                               { return (NOT); }
+            
+{TRUE}                              { cool_yylval.boolean = 1; return (BOOL_CONST); }
+{FALSE}                             { cool_yylval.boolean = 0; return (BOOL_CONST); }
+                    
+{INTEGER}                           { cool_yylval.symbol = inttable.add_string(yytext); return INT_CONST; }
+                    
+{TYPE}                              { cool_yylval.symbol = inttable.add_string(yytext); return TYPEID; }
+{OBJECT}                            { cool_yylval.symbol = inttable.add_string(yytext); return OBJECTID; }
+                
+                
+\n                                  { curr_lineno++; }
+[ \r\t\v\f]                         /* nothing */
+            
+.                                   { cool_yylval.error_msg = strdup(yytext); return ERROR; }
 
 %%
 
