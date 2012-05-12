@@ -110,7 +110,7 @@ OBJECT                              [a-z][a-zA-Z0-9_]*
 
  /* comments */
 {COMMENT_START}                     { BEGIN(COMMENT_SHORT); }
-<COMMENT_SHORT>\n                   { BEGIN(INITIAL); }
+<COMMENT_SHORT>\n                   { curr_lineno++; BEGIN(INITIAL); }
 <COMMENT_SHORT>.*                   /* NOTHING */
 
 {COMMENT_LONG_END}                  { SetCommentError("Comment end without matching start"); return ERROR; }
@@ -122,6 +122,7 @@ OBJECT                              [a-z][a-zA-Z0-9_]*
                                        commentDepth--;
                                        if (commentDepth <= 0) BEGIN(INITIAL);
                                     }
+<COMMENT_LONG>\n                    { curr_lineno++; }
 <COMMENT_LONG>[^(\n\*]*             /* NOTHING */
 <COMMENT_LONG>[(\*]                 /* NOTHING */
 <COMMENT_LONG><<EOF>>               { SetCommentError("EOF in comment"); return ERROR; }
